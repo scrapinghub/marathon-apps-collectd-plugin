@@ -3,10 +3,13 @@
 #
 # Collectd plugin for collecting docker container stats
 #
-# Copyright © 2015 eNovance
+# Copyright Â© 2015 eNovance
 #
 # Authors:
 #   Sylvain Baubeau <sylvain.baubeau@enovance.com>
+#
+# Modified by:
+#   Joaquin Sargiotto
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,7 +24,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-# Requirements: docker-py
+# Requirements: docker-py, python-dateutil
 
 import dateutil.parser
 from distutils.version import StrictVersion
@@ -40,15 +43,18 @@ def _c(c):
     is <7-digit ID>/<name>."""
     if type(c) == str or type(c) == unicode:
         return c[:7]
-    return '{id}/{name}'.format(id=c['Id'][:7], name=c['Name'])
+    return '{id}'.format(id=c['Id'][:7])
 
 
 class Stats:
     @classmethod
     def emit(cls, container, type, value, t=None, type_instance=None):
         val = collectd.Values()
-        val.plugin = 'docker'
-        val.plugin_instance = container['Name']
+        val.plugin = 'mesos-marathon-tasks'
+        if 'App' in container:
+            val.plugin_instance = "{}.{}".format(container['App'], container['Task'])
+        else:
+            return
 
         if type:
             val.type = type
@@ -109,6 +115,7 @@ class BlkioStats(Stats):
 class CpuStats(Stats):
     @classmethod
     def read(cls, container, stats, t):
+        #print "CpuStats:read: {}".format(stats)
         cpu_stats = stats['cpu_stats']
         cpu_usage = cpu_stats['cpu_usage']
 
@@ -197,6 +204,25 @@ class ContainerStats(threading.Thread):
         collectd.info('Starting stats gathering for {container}.'
                       .format(container=_c(self._container)))
 
+        # Get container inspect info and get marathon app and mesos task ids
+        details = self._client.inspect_container(self._container['Id'])
+        app = None
+        task = None
+        env = details.get('Config', {}).get('Env', [])
+        for var in env:
+            name, value = var.split('=')
+            if name == 'MARATHON_APP_ID':
+                app = (value[1:]).replace(".", "_").replace('/', '_')
+            if name == 'MESOS_TASK_ID':
+                task = value.replace(".", "_")
+
+        if app and task:
+            self._container['App'] = app
+            self._container['Task'] = task[len(app)+1:]
+        else:
+            # We're not interested in non-marathon containers
+            self.stop = True
+
         failures = 0
         while not self.stop:
             try:
@@ -231,7 +257,7 @@ class ContainerStats(threading.Thread):
     def stats(self):
         """Wait, if needed, for stats to be available and return the most
         recently read stats data, parsed as JSON, for the container."""
-        while not self._stats:
+        while not self._stats and not self.stop:
             pass
         return self._stats
 
@@ -242,7 +268,7 @@ class DockerPlugin:
     Docker's remote API /<container>/stats endpoint.
     """
 
-    DEFAULT_BASE_URL = 'unix://var/run/docker.sock'
+    DEFAULT_BASE_URL = 'http://localhost:2376/'
     DEFAULT_DOCKER_TIMEOUT = 5
 
     # The stats endpoint is only supported by API >= 1.17
@@ -258,15 +284,35 @@ class DockerPlugin:
 
     def configure_callback(self, conf):
         for node in conf.children:
-            if node.key == 'BaseURL':
-                self.docker_url = node.values[0]
-            elif node.key == 'Timeout':
-                self.timeout = int(node.values[0])
+            if node.key == 'Host':
+                self.docker_host = node.values[0]
+            elif node.key == 'Port':
+                self.docker_port = node.values[0]
+            elif node.key == 'CertKey':
+                self.docker_ssl_key = node.values[0]
+            elif node.key == 'CertCert':
+                self.docker_ssl_cert = node.values[0]
+            elif node.key == 'CertCA':
+                self.docker_ssl_ca = node.values[0]
 
     def init_callback(self):
+        tls_config = False
+        protocol = "http"
+        if self.docker_ssl_key != "False":
+            protocol = "https"
+            tls_config = docker.tls.TLSConfig(
+                client_cert=(self.docker_ssl_cert, self.docker_ssl_key),
+                verify=self.docker_ssl_ca
+            )
+
+        self.docker_url = "{}://{}:{}/".format(protocol, self.docker_host,
+                                          self.docker_port)
+
+        # Connect client
         self.client = docker.Client(
-            base_url=self.docker_url,
-            version=DockerPlugin.MIN_DOCKER_API_VERSION)
+            base_url=docker_url,
+            version=DockerPlugin.MIN_DOCKER_API_VERSION,
+            tls=tls_config)
         self.client.timeout = self.timeout
 
         # Check API version for stats endpoint support.
@@ -301,12 +347,6 @@ class DockerPlugin:
 
         for container in containers:
             try:
-                for name in container['Names']:
-                    # Containers can be linked and the container name is not
-                    # necessarly the first entry of the list
-                    if not re.match("/.*/", name):
-                        container['Name'] = name[1:]
-
                 # Start a stats gathering thread if the container is new.
                 if container['Id'] not in self.stats:
                     self.stats[container['Id']] = ContainerStats(container,
@@ -314,9 +354,11 @@ class DockerPlugin:
 
                 # Get and process stats from the container.
                 stats = self.stats[container['Id']].stats
-                t = stats['read']
-                for klass in self.CLASSES:
-                    klass.read(container, stats, t)
+                if stats:
+                    t = stats['read']
+                    for klass in self.CLASSES:
+                        klass.read(self.stats[container['Id']]._container,
+                                   stats, t)
             except Exception, e:
                 collectd.warning(('Error getting stats for container '
                                   '{container}: {msg}')
