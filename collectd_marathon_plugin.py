@@ -115,7 +115,6 @@ class BlkioStats(Stats):
 class CpuStats(Stats):
     @classmethod
     def read(cls, container, stats, t):
-        #print "CpuStats:read: {}".format(stats)
         cpu_stats = stats['cpu_stats']
         cpu_usage = cpu_stats['cpu_usage']
 
@@ -287,7 +286,7 @@ class DockerPlugin:
             if node.key == 'Host':
                 self.docker_host = node.values[0]
             elif node.key == 'Port':
-                self.docker_port = node.values[0]
+                self.docker_port = int(node.values[0])
             elif node.key == 'CertKey':
                 self.docker_ssl_key = node.values[0]
             elif node.key == 'CertCert':
@@ -310,7 +309,7 @@ class DockerPlugin:
 
         # Connect client
         self.client = docker.Client(
-            base_url=docker_url,
+            base_url=self.docker_url,
             version=DockerPlugin.MIN_DOCKER_API_VERSION,
             tls=tls_config)
         self.client.timeout = self.timeout
