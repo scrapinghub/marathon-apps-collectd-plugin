@@ -268,7 +268,7 @@ class DockerPlugin:
     """
 
     DEFAULT_BASE_URL = 'http://localhost:2376/'
-    DEFAULT_DOCKER_TIMEOUT = 15
+    DEFAULT_DOCKER_TIMEOUT = 5
 
     # The stats endpoint is only supported by API >= 1.17
     MIN_DOCKER_API_VERSION = '1.17'
