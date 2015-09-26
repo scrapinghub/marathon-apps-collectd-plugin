@@ -36,3 +36,4 @@ TypesDB "/usr/share/collectd/plugins/marathon/metrics.db"
         CertCA "{{ DOCKER_SSL_CA_CERT | default(False) }}"
     </Module>
 </Plugin>
+
