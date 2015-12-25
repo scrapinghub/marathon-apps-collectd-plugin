@@ -14,23 +14,26 @@ LoadPlugin "logfile"
 
 LoadPlugin "csv"
 <Plugin "csv">
-  DataDir "/var/log/collectd.csv"
-  StoreRates true
+    DataDir "/var/log/collectd.csv"
+    StoreRates true
 </Plugin>
 
 LoadPlugin write_graphite
 <Plugin "write_graphite">
-    <Carbon>
-        Host "{{ GRAPHITE_HOST }}"
-        Port "{{ GRAPHITE_PORT | default("2003") }}"
-        Protocol "tcp"
-        Prefix "{{ GRAPHITE_PREFIX | default("collectd.") }}"
-        EscapeCharacter "."
-        StoreRates true
-        AlwaysAppendDS false
-        SeparateInstances true
-    </Carbon>
+    <Node "main_node">
+        <Carbon>
+            Host "{{ GRAPHITE_HOST }}"
+            Port "{{ GRAPHITE_PORT | default("2003") }}"
+            Protocol "tcp"
+            Prefix "{{ GRAPHITE_PREFIX | default("collectd.") }}"
+            EscapeCharacter "."
+            StoreRates true
+            AlwaysAppendDS false
+            SeparateInstances true
+        </Carbon>
+    </Node>
 </Plugin>
+
 
 TypesDB "/usr/share/collectd/plugins/mesos/metrics.db"
 <LoadPlugin "python">
@@ -39,7 +42,6 @@ TypesDB "/usr/share/collectd/plugins/mesos/metrics.db"
 
 <Plugin "python">
     ModulePath "/usr/share/collectd/plugins/mesos"
-
     Import "collectd_mesos_plugin"
     <Module "collectd_mesos_plugin">
         Host "{{ DOCKER_REMOTE_HOST }}"
@@ -51,15 +53,20 @@ TypesDB "/usr/share/collectd/plugins/mesos/metrics.db"
 </Plugin>
 
 LoadPlugin "match_regex"
+PostCacheChain "PostCache"
 <Chain "PostCache">
     <Rule>
         <Match regex>
-            Plugin "collectd.*.mesos-tasks.kumo.*"
+            Plugin "mesos-tasks"
+            PluginInstance "^kumo."
         </Match>
         <Target write>
             Plugin "csv"
         </Target>
-        Target stop
+        <Target stop>
+        </Target>
     </Rule>
-    Target "write"
+    <Target "write">
+        Plugin "write_graphite"
+    </Target>
 </Chain>
