@@ -9,11 +9,12 @@ RUN pip install -r /requirements.txt
 ADD collectd.conf.tpl /etc/collectd/collectd.conf.tpl
 
 # Add metrics collector
-ADD collectd_marathon_plugin.py /usr/share/collectd/plugins/marathon/
+ADD collectd_mesos_plugin.py /usr/share/collectd/plugins/mesos/
 
 # Add metrics db
-ADD metrics.db /usr/share/collectd/plugins/marathon/
+ADD metrics.db /usr/share/collectd/plugins/mesos/
 
 # Add entrypoint script
 ADD bin/run.sh /run.sh
 ENTRYPOINT ["/run.sh"]
+VOLUME /var/log

@@ -5,6 +5,19 @@ Interval {{ COLLECTD_INTERVAL | default(10) }}
 Timeout 2
 ReadThreads 5
 
+LoadPlugin "logfile"
+<Plugin "logfile">
+  LogLevel "info"
+  File "/var/log/collectd_plugin.log"
+  Timestamp true
+</Plugin>
+
+LoadPlugin "csv"
+<Plugin "csv">
+  DataDir "/var/log/collectd.csv"
+  StoreRates true
+</Plugin>
+
 LoadPlugin write_graphite
 <Plugin "write_graphite">
     <Carbon>
@@ -19,16 +32,16 @@ LoadPlugin write_graphite
     </Carbon>
 </Plugin>
 
-TypesDB "/usr/share/collectd/plugins/marathon/metrics.db"
+TypesDB "/usr/share/collectd/plugins/mesos/metrics.db"
 <LoadPlugin "python">
     Globals true
 </LoadPlugin>
 
 <Plugin "python">
-    ModulePath "/usr/share/collectd/plugins/marathon"
+    ModulePath "/usr/share/collectd/plugins/mesos"
 
-    Import "collectd_marathon_plugin"
-    <Module "collectd_marathon_plugin">
+    Import "collectd_mesos_plugin"
+    <Module "collectd_mesos_plugin">
         Host "{{ DOCKER_REMOTE_HOST }}"
         Port {{ DOCKER_REMOTE_PORT | default(2376) }}
         CertKey "{{ DOCKER_SSL_CLIENT_KEY | default(False) }}"
@@ -37,3 +50,16 @@ TypesDB "/usr/share/collectd/plugins/marathon/metrics.db"
     </Module>
 </Plugin>
 
+LoadPlugin "match_regex"
+<Chain "PostCache">
+    <Rule>
+        <Match regex>
+            Plugin "collectd.*.mesos-tasks.kumo.*"
+        </Match>
+        <Target write>
+            Plugin "csv"
+        </Target>
+        Target stop
+    </Rule>
+    Target "write"
+</Chain>
