@@ -217,7 +217,11 @@ class ContainerStats(threading.Thread):
 
         if app and task:
             self._container['App'] = app
-            self._container['Task'] = task[len(app)+1:]
+            # Task ID: appID_{8chars}-{4chars}-{4chars}-{4chars}-{12chars}
+            # Regex  : appID_[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}
+            # Example: splash-brandview-keywords_web_cf4e7639-aeb4-11e5-ad74-56847afe9799
+            # First 8 chars are unique to every task, related to launch time (seconds)
+            self._container['Task'] = task[len(app)+1:len(app)+9]
         else:
             # We're not interested in non-marathon containers
             self.stop = True
