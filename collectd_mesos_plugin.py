@@ -223,19 +223,18 @@ class ContainerStats(threading.Thread):
                 kumo_job = value.split('/')[:3]
 
         # FIXME we can use environment variable or rely on image name
-        image = details.get('Config', {}).get('Image')
-        if app and task:
+        if kumo_job:
+            self._container['App'] = 'kumo'
+            self._container['Project'] = kumo_job[0]
+            self._container['Spider'] = kumo_job[1]
+            self._container['Job'] = kumo_job[2]
+        elif app and task:
             self._container['App'] = app
             # Task ID: appID_{8chars}-{4chars}-{4chars}-{4chars}-{12chars}
             # Regex  : appID_[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}
             # Example: splash-brandview-keywords_web_cf4e7639-aeb4-11e5-ad74-56847afe9799
             # First 8 chars are unique to every task, related to launch time (seconds)
             self._container['Task'] = task[len(app)+1:len(app)+9]
-        elif kumo_job:
-            self._container['App'] = 'kumo'
-            self._container['Project'] = kumo_job[0]
-            self._container['Spider'] = kumo_job[1]
-            self._container['Job'] = kumo_job[2]
         else:
             # We're not interested in other mesos containers
             self.stop = True
@@ -350,6 +349,7 @@ class DockerPlugin:
                       .format(url=self.docker_url,
                               version=version,
                               timeout=self.timeout))
+
         return True
 
     def read_callback(self):
