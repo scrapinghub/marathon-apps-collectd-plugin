@@ -29,11 +29,17 @@ class OpenTSDBExportPlugin:
         return True
 
     def write_callback(self, vl):
+        metric_name = '{}.{}'.format(vl.type, vl.type_instance)
+        tags = {'timestamp': vl.time}
+        if vl.plugin_instance.startswith('kumo.'):
+            project, spider, job = vl.plugin_instance.split('.')[1:]
+            tags.update({'project': project,
+                         'spider': spider,
+                         'job': job,
+                         'task': vl.plugin_instance[5:]})
         for value in vl.values:
             if isinstance(value, (float, int)):
-                self.metrics.send(vl.plugin_instance, value,
-                                  type_instance=vl.type_instance,
-                                  type=vl.type)
+                self.metrics.send(metric_name, value, **tags)
 
     def shutdown_callback(self):
         if self.metrics:
