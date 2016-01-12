@@ -18,17 +18,18 @@ class OpenTSDBExportPlugin:
                 self._opentsdb_port = value
         if not self._opentsdb_host or not self._opentsdb_port:
             raise Exception("OpenTSDB export plugin is not configured")
-        collectd.info("Configured OpenTSDB export plugin.")
+        collectd.info("Configured OpenTSDB export plugin (%s:%s)" %
+                      (self._opentsdb_host, self._opentsdb_port))
 
     def init_callback(self):
-        self.metrics = potsdb.Client(
-            host=self._opentsdb_host,
-            port=self._opentsdb_port,
-            host_tag=True, mps=100, check_host=True)
+        self.metrics = potsdb.Client(host=self._opentsdb_host,
+                                     port=self._opentsdb_port,
+                                     mps=100, check_host=True)
         collectd.info("Initialized OpenTSDB export plugin.")
-        return True
 
     def write_callback(self, vl):
+        if not self.metrics:
+            return
         metric_name = '{}.{}'.format(vl.type, vl.type_instance)
         tags = {'timestamp': vl.time}
         if vl.plugin_instance.startswith('kumo.'):
@@ -48,7 +49,7 @@ class OpenTSDBExportPlugin:
 
 
 if __name__ == '__main__':
-    print "OpenTSDB is called as a python script"
+    print "OpenTSDB export plugin is called as a python script"
 else:
     try:
         plugin = OpenTSDBExportPlugin()

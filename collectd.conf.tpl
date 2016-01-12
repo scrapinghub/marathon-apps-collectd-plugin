@@ -57,6 +57,6 @@ PostCacheChain "PostCache"
         Target stop
     </Rule>
     <Target "write">
-        Plugin "write_graphite"
+        Plugin "write_graphite/carbon"
     </Target>
 </Chain>
