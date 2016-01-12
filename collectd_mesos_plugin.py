@@ -217,7 +217,6 @@ class ContainerStats(threading.Thread):
             if name == 'SHUB_JOBKEY':
                 kumo_job = value
 
-        # FIXME we can use environment variable or rely on image name
         if kumo_job:
             self._container['App'] = 'kumo'
             self._container['Task'] = kumo_job
@@ -342,7 +341,6 @@ class DockerPlugin:
                       .format(url=self.docker_url,
                               version=version,
                               timeout=self.timeout))
-
         return True
 
     def read_callback(self):
