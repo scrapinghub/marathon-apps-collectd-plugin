@@ -52,13 +52,8 @@ class Stats:
         val = collectd.Values()
         val.plugin = 'mesos-tasks'
         if 'App' in container:
-            if container['App'] == 'kumo':
-                val.plugin_instance = "{}.{}.{}.{}".format(
-                    container['App'], container['Project'],
-                    container['Spider'], container['Job'])
-            else:
-                val.plugin_instance = "{}.{}".format(
-                    container['App'], container['Task'])
+            val.plugin_instance = "{}.{}".format(
+                container['App'], container['Task'])
         else:
             return
 
@@ -219,15 +214,13 @@ class ContainerStats(threading.Thread):
                 app = (value[1:]).replace(".", "_").replace('/', '_')
             if name == 'MESOS_TASK_ID':
                 task = value.replace(".", "_")
-            if name == 'KUMO_JOB_ID':
-                kumo_job = value.split('/')[:3]
+            if name == 'SHUB_JOBKEY':
+                kumo_job = value
 
         # FIXME we can use environment variable or rely on image name
         if kumo_job:
             self._container['App'] = 'kumo'
-            self._container['Project'] = kumo_job[0]
-            self._container['Spider'] = kumo_job[1]
-            self._container['Job'] = kumo_job[2]
+            self._container['Task'] = kumo_job
         elif app and task:
             self._container['App'] = app
             # Task ID: appID_{8chars}-{4chars}-{4chars}-{4chars}-{12chars}

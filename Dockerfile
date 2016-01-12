@@ -18,4 +18,3 @@ ADD metrics.db /usr/share/collectd/plugins/mesos/
 # Add entrypoint script
 ADD bin/run.sh /run.sh
 ENTRYPOINT ["/run.sh"]
-VOLUME /var/log
