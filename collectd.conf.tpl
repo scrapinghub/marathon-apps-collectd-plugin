@@ -7,7 +7,7 @@ ReadThreads 5
 
 LoadPlugin write_graphite
 <Plugin "write_graphite">
-    <Carbon>
+    <Node "carbon">
         Host "{{ GRAPHITE_HOST }}"
         Port "{{ GRAPHITE_PORT | default("2003") }}"
         Protocol "tcp"
@@ -16,7 +16,7 @@ LoadPlugin write_graphite
         StoreRates true
         AlwaysAppendDS false
         SeparateInstances true
-    </Carbon>
+    </Node>
 </Plugin>
 
 TypesDB "/usr/share/collectd/plugins/mesos/metrics.db"
@@ -49,14 +49,14 @@ PostCacheChain "PostCache"
     <Rule>
         <Match regex>
             Plugin "mesos-tasks"
-            PluginInstance "^(!kumo)"
+            PluginInstance "^(kumo\.)"
         </Match>
         <Target "write">
-            Plugin "write_graphite"
+            Plugin "python.write_opentsdb"
         </Target>
         Target stop
     </Rule>
     <Target "write">
-        Plugin "python.write_opentsdb"
+        Plugin "write_graphite"
     </Target>
 </Chain>

@@ -219,7 +219,7 @@ class ContainerStats(threading.Thread):
 
         if kumo_job:
             self._container['App'] = 'kumo'
-            self._container['Task'] = kumo_job
+            self._container['Task'] = kumo_job.replace('/', '.')
         elif app and task:
             self._container['App'] = app
             # Task ID: appID_{8chars}-{4chars}-{4chars}-{4chars}-{12chars}
