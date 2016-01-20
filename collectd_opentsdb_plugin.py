@@ -24,7 +24,8 @@ class OpenTSDBExportPlugin:
     def init_callback(self):
         self.metrics = potsdb.Client(host=self._opentsdb_host,
                                      port=self._opentsdb_port,
-                                     mps=100, check_host=True)
+                                     mps=100, check_host=True,
+                                     backoff=5)
         collectd.info("Initialized OpenTSDB export plugin.")
 
     def write_callback(self, vl):
