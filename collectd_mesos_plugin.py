@@ -209,7 +209,7 @@ class ContainerStats(threading.Thread):
         app, task, kumo_job = None, None, None
         env = details.get('Config', {}).get('Env', [])
         for var in env:
-            name, value = var.split('=')[:2]
+            name, value = var.split('=', 1)
             if name == 'MARATHON_APP_ID':
                 app = (value[1:]).replace(".", "_").replace('/', '_')
             if name == 'MESOS_TASK_ID':
