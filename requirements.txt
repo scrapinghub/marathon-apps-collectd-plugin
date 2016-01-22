@@ -1,3 +1,5 @@
 envtpl
 py-dateutil
 docker-py>=1.0.0
+# potsdb==1.0.2 disabled in favor of the fork with connection backoff feature
+https://github.com/scrapinghub/potsdb/archive/feature-add-connection-backoff.zip#egg=potsdb

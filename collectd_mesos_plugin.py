@@ -50,9 +50,10 @@ class Stats:
     @classmethod
     def emit(cls, container, type, value, t=None, type_instance=None):
         val = collectd.Values()
-        val.plugin = 'mesos-marathon-tasks'
+        val.plugin = 'mesos-tasks'
         if 'App' in container:
-            val.plugin_instance = "{}.{}".format(container['App'], container['Task'])
+            val.plugin_instance = "{}.{}".format(
+                container['App'], container['Task'])
         else:
             return
 
@@ -205,17 +206,21 @@ class ContainerStats(threading.Thread):
 
         # Get container inspect info and get marathon app and mesos task ids
         details = self._client.inspect_container(self._container['Id'])
-        app = None
-        task = None
+        app, task, kumo_job = None, None, None
         env = details.get('Config', {}).get('Env', [])
         for var in env:
-            name, value = var.split('=')
+            name, value = var.split('=', 1)
             if name == 'MARATHON_APP_ID':
                 app = (value[1:]).replace(".", "_").replace('/', '_')
             if name == 'MESOS_TASK_ID':
                 task = value.replace(".", "_")
+            if name == 'SHUB_JOBKEY':
+                kumo_job = value
 
-        if app and task:
+        if kumo_job:
+            self._container['App'] = 'kumo'
+            self._container['Task'] = kumo_job.replace('/', '.')
+        elif app and task:
             self._container['App'] = app
             # Task ID: appID_{8chars}-{4chars}-{4chars}-{4chars}-{12chars}
             # Regex  : appID_[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}
@@ -223,7 +228,7 @@ class ContainerStats(threading.Thread):
             # First 8 chars are unique to every task, related to launch time (seconds)
             self._container['Task'] = task[len(app)+1:len(app)+9]
         else:
-            # We're not interested in non-marathon containers
+            # We're not interested in other mesos containers
             self.stop = True
 
         failures = 0
