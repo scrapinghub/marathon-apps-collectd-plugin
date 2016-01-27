@@ -218,6 +218,8 @@ class ContainerStats(threading.Thread):
                 kumo_job = value
 
         if kumo_job:
+            collectd.info('Found a Kumo job %s, container %s' %
+                          (kumo_job, self._container['Id']))
             self._container['App'] = 'kumo'
             self._container['Task'] = kumo_job.replace('/', '.')
         elif app and task:
