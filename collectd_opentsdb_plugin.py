@@ -40,6 +40,7 @@ class OpenTSDBExportPlugin:
                          'task': vl.plugin_instance[5:]})
         for value in vl.values:
             if isinstance(value, (float, int)):
+                collectd.info('W %s=%s (%s)' % (metric_name, value, tags))
                 self.metrics.send(metric_name, value, **tags)
 
     def shutdown_callback(self):
