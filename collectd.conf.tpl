@@ -49,7 +49,7 @@ PostCacheChain "PostCache"
     <Rule>
         <Match regex>
             Plugin "mesos-tasks"
-            PluginInstance "^(kumo\.)"
+            PluginInstance "^(kumo\\.)"
         </Match>
         <Target "write">
             Plugin "python.write_opentsdb"
