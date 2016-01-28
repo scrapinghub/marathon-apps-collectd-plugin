@@ -1,12 +1,13 @@
 import os
 import potsdb
 import collectd
+import threading
 
 
 class OpenTSDBExportPlugin:
 
     def __init__(self):
-        self.metrics = None
+        self._writers = {}
 
     def configure_callback(self, conf):
         for node in conf.children:
@@ -16,21 +17,15 @@ class OpenTSDBExportPlugin:
                 self._opentsdb_host = value
             elif key == 'port':
                 self._opentsdb_port = value
-        if not self._opentsdb_host or not self._opentsdb_port:
+        if (not hasattr(self, '_opentsdb_host') or
+                not hasattr(self, '_opentsdb_port')):
             raise Exception("OpenTSDB export plugin is not configured")
         collectd.info("Configured OpenTSDB export plugin (%s:%s)" %
                       (self._opentsdb_host, self._opentsdb_port))
 
-    def init_callback(self):
-        self.metrics = potsdb.Client(host=self._opentsdb_host,
-                                     port=self._opentsdb_port,
-                                     mps=100, check_host=False)
-        collectd.info("Initialized OpenTSDB export plugin.")
-
     def write_callback(self, vl):
-        if not self.metrics:
-            return
-        metric_name = '{}.{}'.format(vl.type, vl.type_instance)
+        writer = self._get_writer()
+        metric_name = '{}.{}'.format(vl.type, vl.type_instance).strip('.')
         tags = {'timestamp': vl.time}
         if vl.plugin_instance.startswith('kumo.'):
             project, spider, job = vl.plugin_instance.split('.')[1:]
@@ -40,13 +35,21 @@ class OpenTSDBExportPlugin:
                          'task': vl.plugin_instance[5:]})
         for value in vl.values:
             if isinstance(value, (float, int)):
-                collectd.info('W %s=%s (%s)' % (metric_name, value, tags))
-                self.metrics.send(metric_name, value, **tags)
+                writer.send(metric_name, value, **tags)
 
     def shutdown_callback(self):
-        if self.metrics:
-            self.metrics.wait()
+        for writer in self._writers.values():
+            writer.wait()
         collectd.info("Shutdown-ed OpenTSDB export plugin.")
+
+    def _get_writer(self):
+        thread_id = threading.current_thread().ident
+        if not thread_id in self._writers:
+            self._writers[thread_id] = potsdb.Client(
+                host=self._opentsdb_host,
+                port=self._opentsdb_port,
+                mps=100, check_host=False)
+        return self._writers[thread_id]
 
 
 if __name__ == '__main__':
@@ -55,7 +58,6 @@ else:
     try:
         plugin = OpenTSDBExportPlugin()
         collectd.register_config(plugin.configure_callback)
-        collectd.register_init(plugin.init_callback)
         collectd.register_write(plugin.write_callback, name='write_opentsdb')
         collectd.register_shutdown(plugin.shutdown_callback)
         print "OpenTSDB export plugin is registered."
