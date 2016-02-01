@@ -33,7 +33,6 @@ import os
 import threading
 import time
 import sys
-import re
 
 
 def _c(c):
@@ -41,7 +40,7 @@ def _c(c):
     argument is a string, it is assumed to be the container's ID and only the
     first 7 digits will be returned. If it's a dictionary, the string returned
     is <7-digit ID>/<name>."""
-    if type(c) == str or type(c) == unicode:
+    if isinstance(c, (str, type(u''))):
         return c[:7]
     return '{id}'.format(id=c['Id'][:7])
 
@@ -242,7 +241,7 @@ class ContainerStats(threading.Thread):
                 self._stats = self._feed.next()
                 # Reset failure count on successfull read from the stats API.
                 failures = 0
-            except Exception, e:
+            except Exception as e:
                 collectd.warning('Error reading stats from {container}: {msg}'
                                  .format(container=_c(self._container), msg=e))
 
@@ -278,7 +277,6 @@ class DockerPlugin:
     Docker's remote API /<container>/stats endpoint.
     """
 
-    DEFAULT_BASE_URL = 'http://localhost:2376/'
     DEFAULT_DOCKER_TIMEOUT = 5
 
     # The stats endpoint is only supported by API >= 1.17
@@ -287,14 +285,16 @@ class DockerPlugin:
     CLASSES = [NetworkStats, BlkioStats, CpuStats, MemoryStats]
 
     def __init__(self, docker_url=None):
-        self.docker_url = docker_url or DockerPlugin.DEFAULT_BASE_URL
-        self.timeout = DockerPlugin.DEFAULT_DOCKER_TIMEOUT
+        self.docker_url = docker_url
+        self.timeout = self.DEFAULT_DOCKER_TIMEOUT
         self.capture = False
         self.stats = {}
 
     def configure_callback(self, conf):
         for node in conf.children:
-            if node.key == 'Host':
+            if node.key == 'Url':
+                self.docker_url = node.values[0]
+            elif node.key == 'Host':
                 self.docker_host = node.values[0]
             elif node.key == 'Port':
                 self.docker_port = int(node.values[0])
@@ -307,31 +307,30 @@ class DockerPlugin:
 
     def init_callback(self):
         tls_config = False
-        protocol = "http"
         if self.docker_ssl_key != "False":
-            protocol = "https"
             tls_config = docker.tls.TLSConfig(
                 client_cert=(self.docker_ssl_cert, self.docker_ssl_key),
                 verify=self.docker_ssl_ca
             )
 
-        self.docker_url = "{}://{}:{}/".format(protocol, self.docker_host,
-                                          self.docker_port)
+        # Drop docker_host/port in favour of docker_url
+        if self.docker_host:
+            protocol = "http" if tls_config is None else "https"
+            self.docker_url = "{}://{}:{}/".format(
+                protocol, self.docker_host, self.docker_port)
 
         # Connect client
         self.client = docker.Client(
             base_url=self.docker_url,
-            version=DockerPlugin.MIN_DOCKER_API_VERSION,
-            tls=tls_config)
-        self.client.timeout = self.timeout
+            version=self.MIN_DOCKER_API_VERSION,
+            timeout=self.timeout,
+            tls=tls_config,
+        )
 
         # Check API version for stats endpoint support.
-        try:
-            version = self.client.version()['ApiVersion']
-            if StrictVersion(version) < \
-                    StrictVersion(DockerPlugin.MIN_DOCKER_API_VERSION):
-                raise Exception
-        except:
+        version = self.client.version()['ApiVersion']
+        if StrictVersion(version) < \
+                StrictVersion(DockerPlugin.MIN_DOCKER_API_VERSION):
             collectd.warning(('Docker daemon at {url} does not '
                               'support container statistics!')
                              .format(url=self.docker_url))
@@ -357,22 +356,24 @@ class DockerPlugin:
 
         for container in containers:
             try:
-                # Start a stats gathering thread if the container is new.
-                if container['Id'] not in self.stats:
-                    self.stats[container['Id']] = ContainerStats(container,
-                                                                 self.client)
-
-                # Get and process stats from the container.
-                stats = self.stats[container['Id']].stats
-                if stats:
-                    t = stats['read']
-                    for klass in self.CLASSES:
-                        klass.read(self.stats[container['Id']]._container,
-                                   stats, t)
-            except Exception, e:
+                self._read_container_stats(container)
+            except Exception as e:
                 collectd.warning(('Error getting stats for container '
                                   '{container}: {msg}')
                                  .format(container=_c(container), msg=e))
+
+    def _read_container_stats(self, container):
+        # Start a stats gathering thread if the container is new.
+        cid = container['Id']
+        if cid not in self.stats:
+            self.stats[cid] = ContainerStats(container, self.client)
+
+        # Get and process stats from the container.
+        stats = self.stats[cid].stats
+        if stats:
+            t = stats['read']
+            for klass in self.CLASSES:
+                klass.read(self.stats[cid]._container, stats, t)
 
 
 # Command-line execution
@@ -387,18 +388,20 @@ if __name__ == '__main__':
             identifier += '/' + self.type
             if getattr(self, 'type_instance', None):
                 identifier += '-' + self.type_instance
-            print 'PUTVAL', identifier, \
-                  ':'.join(map(str, [int(self.time)] + self.values))
+                print('PUTVAL {} {} {}'.format(
+                    identifier,
+                    ':'.join(map(str, [int(self.time)] + self.values)),
+                ))
 
     class ExecCollectd:
         def Values(self):
             return ExecCollectdValues()
 
         def warning(self, msg):
-            print 'WARNING:', msg
+            print('WARNING: {}'.format(msg))
 
         def info(self, msg):
-            print 'INFO:', msg
+            print('INFO: {}'.format(msg))
 
         def register_read(self, docker_plugin):
             pass
