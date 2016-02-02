@@ -30,7 +30,10 @@ class OpenTSDBExportPlugin:
     def write_callback(self, vl):
         if not self.metrics:
             return
-        metric_name = '{}.{}'.format(vl.type, vl.type_instance)
+        metric_name = 'kumo.{}'.format(vl.type)
+        if vl.type_instance:
+            metric_name += '.{}'.format(vl.type_instance)
+
         tags = {'timestamp': vl.time}
         if vl.plugin_instance.startswith('kumo.'):
             project, spider, job = vl.plugin_instance.split('.')[1:]
@@ -39,6 +42,7 @@ class OpenTSDBExportPlugin:
                 'spider': '{}/{}'.format(project, spider),
                 'job': '{}/{}/{}'.format(project, spider, job),
             })
+
         for value in vl.values:
             if isinstance(value, (float, int)):
                 collectd.info('W %s=%s (%s)' % (metric_name, value, tags))
