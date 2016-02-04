@@ -30,14 +30,19 @@ class OpenTSDBExportPlugin:
     def write_callback(self, vl):
         if not self.metrics:
             return
-        metric_name = '{}.{}'.format(vl.type, vl.type_instance)
+        metric_name = 'kumo.{}'.format(vl.type)
+        if vl.type_instance:
+            metric_name += '.{}'.format(vl.type_instance)
+
         tags = {'timestamp': vl.time}
         if vl.plugin_instance.startswith('kumo.'):
             project, spider, job = vl.plugin_instance.split('.')[1:]
-            tags.update({'project': project,
-                         'spider': spider,
-                         'job': job,
-                         'task': vl.plugin_instance[5:]})
+            tags.update({
+                'project': project,
+                'spider': '{}/{}'.format(project, spider),
+                'job': '{}/{}/{}'.format(project, spider, job),
+            })
+
         for value in vl.values:
             if isinstance(value, (float, int)):
                 collectd.info('W %s=%s (%s)' % (metric_name, value, tags))
@@ -50,7 +55,7 @@ class OpenTSDBExportPlugin:
 
 
 if __name__ == '__main__':
-    print "OpenTSDB export plugin is called as a python script"
+    print("OpenTSDB export plugin is called as a python script")
 else:
     try:
         plugin = OpenTSDBExportPlugin()
@@ -58,6 +63,6 @@ else:
         collectd.register_init(plugin.init_callback)
         collectd.register_write(plugin.write_callback, name='write_opentsdb')
         collectd.register_shutdown(plugin.shutdown_callback)
-        print "OpenTSDB export plugin is registered."
+        print("OpenTSDB export plugin is registered.")
     except Exception as ex:
-        print "OpenTSDB export plugin exception: %s" % ex
+        print("OpenTSDB export plugin exception: %s" % ex)

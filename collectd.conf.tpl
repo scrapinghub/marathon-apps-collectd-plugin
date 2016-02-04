@@ -1,4 +1,5 @@
-Hostname "{{ COLLECTD_HOST | default(DOCKER_REMOTE_HOST) }}"
+# vim:ft=jinja:
+Hostname "{{ COLLECTD_HOST | default('localhost') }}"
 
 FQDNLookup false
 Interval {{ COLLECTD_INTERVAL | default(10) }}
@@ -8,7 +9,7 @@ ReadThreads 5
 LoadPlugin write_graphite
 <Plugin "write_graphite">
     <Node "carbon">
-        Host "{{ GRAPHITE_HOST }}"
+        Host "{{ GRAPHITE_HOST | default("localhost") }}"
         Port "{{ GRAPHITE_PORT | default("2003") }}"
         Protocol "tcp"
         Prefix "{{ GRAPHITE_PREFIX | default("collectd.") }}"
@@ -30,7 +31,8 @@ TypesDB "/usr/share/collectd/plugins/mesos/metrics.db"
     Import "collectd_mesos_plugin"
     Import "collectd_opentsdb_plugin"
     <Module "collectd_mesos_plugin">
-        Host "{{ DOCKER_REMOTE_HOST }}"
+        Url "{{ DOCKER_REMOTE_URL |default("") }}"
+        Host "{{ DOCKER_REMOTE_HOST |default("") }}"
         Port {{ DOCKER_REMOTE_PORT | default(2376) }}
         CertKey "{{ DOCKER_SSL_CLIENT_KEY | default(False) }}"
         CertCert "{{ DOCKER_SSL_CLIENT_CERT | default(False) }}"
