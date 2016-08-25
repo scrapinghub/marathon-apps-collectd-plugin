@@ -205,7 +205,7 @@ class ContainerStats(threading.Thread):
 
         # Get container inspect info and get marathon app and mesos task ids
         details = self._client.inspect_container(self._container['Id'])
-        app, task, kumo_job = None, None, None
+        app, task, kumo_job, docker_image = None, None, None, None
         env = details.get('Config', {}).get('Env', [])
         for var in env:
             name, value = var.split('=', 1)
@@ -215,8 +215,10 @@ class ContainerStats(threading.Thread):
                 task = value.replace(".", "_")
             if name == 'SHUB_JOBKEY':
                 kumo_job = value
+            if name == 'MARATHON_APP_DOCKER_IMAGE':
+                docker_image = value
 
-        if kumo_job:
+        if kumo_job and "kumo" in docker_image:
             collectd.info('Found a Kumo job %s, container %s' %
                           (kumo_job, self._container['Id']))
             self._container['App'] = 'kumo'
