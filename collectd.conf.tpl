@@ -6,6 +6,14 @@ Interval {{ COLLECTD_INTERVAL | default(10) }}
 Timeout 2
 ReadThreads 5
 
+LoadPlugin logfile
+<Plugin "logfile">
+    LogLevel "warning"
+    File "stdout"
+    Timestamp true
+    PrintSeverity true
+</Plugin>
+
 LoadPlugin write_graphite
 <Plugin "write_graphite">
     <Node "carbon">
