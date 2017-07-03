@@ -134,7 +134,8 @@ class CpuStats(Stats):
         # CPU Percentage based on calculateCPUPercent Docker method
         # https://github.com/docker/docker/blob/master/api/client/stats.go
         cpu_percent = 0.0
-        if 'precpu_stats' in stats:
+        if 'precpu_stats' in stats and \
+                'system_cpu_usage' in stats['precpu_stats']:
             precpu_stats = stats['precpu_stats']
             precpu_usage = precpu_stats['cpu_usage']
             cpu_delta = cpu_usage['total_usage'] - precpu_usage['total_usage']
