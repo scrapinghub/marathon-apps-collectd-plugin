@@ -20,6 +20,7 @@ pip install docker prometheus_client flask
 import logging
 import sys
 import os
+import threading
 from functools import lru_cache
 
 import docker
@@ -28,6 +29,21 @@ from flask import Flask
 
 import prometheus_client.core as prometheus
 from prometheus_client import generate_latest, PROCESS_COLLECTOR
+
+
+def async_call(function, *args, **kwargs):
+    """
+    Execute function in a thread
+    """
+    task = threading.Thread(
+        target=function,
+        name=function.__name__,
+        args=args,
+        kwargs=kwargs
+    )
+    task.daemon = False
+    task.start()
+    return task
 
 
 class BaseStatsCollector(object):
@@ -211,7 +227,7 @@ class LRUCacheStatsCollector(BaseStatsCollector):
         self.get_metric("exporter_details_cache_misses_total").add_metric([], info.misses)
         self.get_metric("exporter_details_cache_max_size").add_metric([], info.maxsize)
         self.get_metric("exporter_details_cache_current_size").add_metric([], info.currsize)
-        
+
         return self._metrics.values()
 
 
@@ -225,6 +241,7 @@ class DockerStatsCollector(object):
             CPUStatsCollector(),
             LRUCacheStatsCollector(DockerStatsCollector._cached_details)
         ]
+        self._lock = threading.Lock()
 
         # Establish the initial connection to the daemon
         self._connect(host, port, client_cert, client_key, ca_cert)
@@ -243,12 +260,23 @@ class DockerStatsCollector(object):
             proto = "https"
             tls_config = docker.tls.TLSConfig(client_cert=(client_cert, client_key),
                                               verify=ca_cert)
+
         # Create connection
         docker_url = "{proto}://{host}:{port}/".format(proto=proto, host=host, port=port)
         self._client = docker.DockerClient(base_url=docker_url, version="1.21",
                                            timeout=5, tls=tls_config)
+        # Check connection
         info = self._client.version()
         logging.debug("Connected to: {} ({})", docker_url, info)
+
+    def _fetch_stats(self, appid, taskid, container_id):
+        """
+        Process stats for `container_id`
+        """
+        stats = self._client.api.stats(container_id, decode=True, stream=False)
+
+        # Add this container's stats to each of the sub-collectors
+        self.add_container(appid, taskid, stats)
 
     @lru_cache(maxsize=32)
     def _cached_details(self, container_id):
@@ -258,8 +286,9 @@ class DockerStatsCollector(object):
         return self._client.api.inspect_container(container_id)
 
     def add_container(self, appid, taskid, stats):
-        for metrics in self._subcollectors:
-            metrics.add_container(appid, taskid, stats)
+        with self._lock:
+            for metrics in self._subcollectors:
+                metrics.add_container(appid, taskid, stats)
 
     def cleanup_samples(self):
         for metrics in self._subcollectors:
@@ -269,6 +298,8 @@ class DockerStatsCollector(object):
         """
         Collect stats from docker daemon and return metrics.
         """
+        threads = []
+
         # Erase previous samples
         self.cleanup_samples()
 
@@ -288,13 +319,14 @@ class DockerStatsCollector(object):
                     taskid = taskid[:8]
 
             # If we don't have both values we can't continue
-            if not appid or not taskid:
-                logging.error("Container's environment variables not found: %s", cid)
-                continue
+            if appid and taskid:
+                threads.append(async_call(self._fetch_stats, appid, taskid, cid))
+            else:
+                logging.debug("Can't calculate 'appid' or 'taskid', ignoring container: %s", cid)
 
-            stats = self._client.api.stats(cid, decode=True, stream=False)
-            # Add this container's stats to each of the sub-collectors
-            self.add_container(appid, taskid, stats)
+        # Wait for all _fetch_stats to finish
+        for thread in threads:
+            thread.join(5)
 
         # Return all the metrics
         for metrics in self._subcollectors:
