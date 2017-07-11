@@ -1,20 +1,13 @@
-FROM alpine:3.3
+FROM python:3.6-alpine
 
-RUN apk --update add collectd collectd-python py-pip
+ADD requirements.txt /tasks_exporter/
 
-ADD requirements.txt /
 RUN pip install -r /requirements.txt
 
-# Add default collectd template
-ADD collectd.conf.tpl /etc/collectd/collectd.conf.tpl
+EXPOSE 9327
 
-# Add metrics collector
-ADD collectd_mesos_plugin.py /usr/share/collectd/plugins/mesos/
-ADD collectd_opentsdb_plugin.py /usr/share/collectd/plugins/mesos/
+USER        nobody
 
-# Add metrics db
-ADD metrics.db /usr/share/collectd/plugins/mesos/
+ENTRYPOINT  [ "python" ]
 
-# Add entrypoint script
-ADD bin/run.sh /run.sh
-ENTRYPOINT ["/run.sh"]
+CMD [ "main.py" ]
