@@ -376,7 +376,7 @@ def main():
     def metrics():
         return generate_latest()
 
-    app.run(host=args.listen_addr, port=args.listen_port)
+    app.run(host=args.listen_host, port=args.listen_port)
     return 0
 
 
