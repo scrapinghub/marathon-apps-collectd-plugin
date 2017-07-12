@@ -19,6 +19,6 @@ EXPOSE 9127
 ENTRYPOINT  [ "/tasks_exporter/main.py" ]
 
 # Default commands
-CMD [ "--listen-host '0.0.0.0'", \
-      "--listen-port 9127", \
-      "--telemetry-path '/metrics'" ]
+CMD [ "--listen-host", "0.0.0.0", \
+      "--listen-port", "9127", \
+      "--telemetry-path", "/metrics" ]
