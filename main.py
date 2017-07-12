@@ -17,6 +17,7 @@ pip install docker prometheus_client flask
 
 """
 
+import argparse
 import logging
 import sys
 import os
@@ -267,7 +268,7 @@ class DockerStatsCollector(object):
                                            timeout=5, tls=tls_config)
         # Check connection
         info = self._client.version()
-        logging.debug("Connected to: {} ({})", docker_url, info)
+        logging.debug("Connected to: %s (%s)", docker_url, info)
 
     def _fetch_stats(self, appid, taskid, container_id):
         """
@@ -330,18 +331,22 @@ class DockerStatsCollector(object):
 
         # Return all the metrics
         for metrics in self._subcollectors:
-            for m in metrics.collect():
-                yield m
-
+            for metric in metrics.collect():
+                yield metric
 
 
 def main():
     """
     Start metrics exporter
     """
-    listen_port = 9127
-    listen_addr = "0.0.0.0"
-    telemetry_path = "/metrics"
+    argp = argparse.ArgumentParser()
+    argp.add_argument("--listen-host", action="store",
+                      default="127.0.0.1", help="Host address on which to expose metrics.")
+    argp.add_argument("--listen-port", action="store", default=9127,
+                      type=int, help="Port on which to expose metrics.")
+    argp.add_argument("--telemetry-path", action="store", default="/metrics",
+                      help="Path under which to expose metrics.")
+    args = argp.parse_args()
 
     # Create collector
     collector = DockerStatsCollector(host=os.environ.get("DOCKER_REMOTE_HOST", "127.0.0.1"),
@@ -363,15 +368,15 @@ def main():
                 "<head><title>Task Exporter</title></head>"
                 "<body>"
                 "<h1>Task Exporter</h1>"
-                "<p><a href=\"" + telemetry_path + "\">Metrics</a></p>"
+                "<p><a href=\"" + args.telemetry_path + "\">Metrics</a></p>"
                 "</body>"
-                "</html>")
+                "</html>\n")
 
-    @app.route(telemetry_path)
+    @app.route(args.telemetry_path)
     def metrics():
         return generate_latest()
 
-    app.run(host=listen_addr, port=listen_port)
+    app.run(host=args.listen_addr, port=args.listen_port)
     return 0
 
 
