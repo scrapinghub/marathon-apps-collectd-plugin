@@ -1,13 +1,15 @@
 FROM python:3.6-alpine
 
-ADD requirements.txt /tasks_exporter/
+WORKDIR /tasks_exporter
 
-RUN pip install -r /requirements.txt
+ADD requirements.txt .
 
-EXPOSE 9327
+RUN pip install -r ./requirements.txt
 
-USER        nobody
+ADD main.py .
 
-ENTRYPOINT  [ "python" ]
+USER nobody
 
-CMD [ "main.py" ]
+WORKDIR /
+
+ENTRYPOINT  [ "/tasks_exporter/main.py" ]
