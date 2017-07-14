@@ -205,9 +205,11 @@ class CPUStatsCollector(BaseStatsCollector):
 
         # Calculate percent usage
         # https://github.com/moby/moby/blob/8a03eb0b6cc56879eada4a928c6314f33001fc83/integration-cli/docker_api_stats_test.go#L40
+        cpu_percent = 0.0
         cpu_delta = cpu_usage["total_usage"] - pre_cpu_stats["cpu_usage"]["total_usage"]
         sys_delta = cpu_stats["system_cpu_usage"] - pre_cpu_stats["system_cpu_usage"]
-        cpu_percent = (cpu_delta / sys_delta) * len(cpu_usage["percpu_usage"]) * 100.0
+        if sys_delta > 0 and cpu_delta > 0:
+            cpu_percent = (cpu_delta / sys_delta) * len(cpu_usage["percpu_usage"]) * 100.0
         self.get_stat("container_cpu_usage_percent").add_metric([appid, taskid], cpu_percent)
 
 
