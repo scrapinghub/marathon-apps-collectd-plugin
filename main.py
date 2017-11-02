@@ -120,8 +120,8 @@ class NetworkStatsCollector(BaseStatsCollector):
         self.add_counter("container_network_transmit_packets_dropped_total",
                          "Cumulative count of packets dropped while transmitting", labels)
 
-    def add_container(self, appid, taskid, container_stats):
-        nets = container_stats["networks"]
+    def add_container(self, appid, taskid, stats):
+        nets = stats["networks"]
         for net in nets:
             for metric_name in self.METRIC_NAME_TO_DOCKER_STAT:
                 stat_id = self.METRIC_NAME_TO_DOCKER_STAT[metric_name]
@@ -146,13 +146,9 @@ class MemoryStatsCollector(BaseStatsCollector):
         self.add_gauge("container_memory_swap", "Container swap usage in bytes.", labels)
         self.add_gauge("container_memory_usage_bytes", "Current memory usage in bytes.", labels)
         self.add_gauge("container_memory_usage_percent", "Percentage of memory usage.", labels)
-        # TODO: Missing,
-        # container_memory_failcnt,
-        # container_memory_failures_total,
-        # container_memory_working_set_bytes
 
-    def add_container(self, appid, taskid, container_stats):
-        mem = container_stats["memory_stats"]
+    def add_container(self, appid, taskid, stats):
+        mem = stats["memory_stats"]
         for metric_name in self.METRIC_NAME_TO_DOCKER_STAT:
             stat_id = self.METRIC_NAME_TO_DOCKER_STAT[metric_name]
             self.get_stat(metric_name).add_metric([appid, taskid], mem["stats"][stat_id])
@@ -178,7 +174,6 @@ class CPUStatsCollector(BaseStatsCollector):
                          "Cumulative cpu time consumed per cpu in seconds.", ["cpu"] + labels)
         self.add_gauge("container_cpu_usage_percent",
                        "Percentage of cpu time used.", labels)
-        # TODO: Add throttling_data metrics
 
     def add_container(self, appid, taskid, stats):
         cpu_stats = stats["cpu_stats"]
@@ -249,6 +244,7 @@ class DockerStatsCollector(object):
 
         # Establish the initial connection to the daemon
         self._connect(host, port, client_cert, client_key, ca_cert)
+        self.logger = logging.getLogger(__name__)
 
     def _connect(self, host, port, client_cert=None, client_key=None, ca_cert=None):
         """
@@ -270,8 +266,9 @@ class DockerStatsCollector(object):
         self._client = docker.DockerClient(base_url=docker_url, version="1.21",
                                            timeout=5, tls=tls_config)
         # Check connection
+        self.logger.debug("Connecting to docker daemon...")
         info = self._client.version()
-        logging.debug("Connected to: %s (%s)", docker_url, info)
+        self.logger.debug("Connected to: %s (%s)", docker_url, info)
 
     def _fetch_stats(self, appid, taskid, container_id):
         """
@@ -287,6 +284,7 @@ class DockerStatsCollector(object):
         """
         Return the details for `container_id`
         """
+        self.logger.debug("Getting container info for %s", container_id)
         return self._client.api.inspect_container(container_id)
 
     def cache_info(self):
@@ -296,11 +294,16 @@ class DockerStatsCollector(object):
         return self._details.cache_info()
 
     def add_container(self, appid, taskid, stats):
+        self.logger.info("Adding container to stats collector: %s:%s", appid, taskid)
         with self._lock:
             for collector in self._subcollectors:
-                collector.add_container(appid, taskid, stats)
+                try:
+                    collector.add_container(appid, taskid, stats)
+                except Exception:
+                    self.logger.exception("[%s] Error parsing stats: %s", str(collector), stats)
 
     def cleanup_samples(self):
+        self.logger.info("Cleaning up samples")
         with self._lock:
             for collector in self._subcollectors:
                 collector.cleanup_samples()
@@ -319,6 +322,7 @@ class DockerStatsCollector(object):
             # Get the details of the container (cached for speed)
             cid = container["Id"]
             details = self._details(cid)
+            self.logger.info("Processing container: %s", cid)
 
             # Get appid and taskid from environment configuration
             appid = taskid = None
@@ -333,11 +337,12 @@ class DockerStatsCollector(object):
             if appid and taskid:
                 threads.append(async_call(self._fetch_stats, appid, taskid, cid))
             else:
-                logging.debug("Can't calculate 'appid' or 'taskid', ignoring container: %s", cid)
+                self.logger.info("Can't calculate 'appid' or 'taskid', ignoring container: %s", cid)
 
         # Wait for all _fetch_stats to finish
         for thread in threads:
             thread.join(5)
+        self.logger.debug("All metrics collected")
 
         # Return all the metrics
         for metrics in self._subcollectors:
@@ -356,7 +361,14 @@ def main():
                       type=int, help="Port on which to expose metrics.")
     argp.add_argument("--telemetry-path", action="store", default="/metrics",
                       help="Path under which to expose metrics.")
+    argp.add_argument('--verbose', action='store_true',
+                      help='Enable verbose logging')
     args = argp.parse_args()
+
+    log_level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(level=log_level,
+                        format="[%(asctime)s: %(levelname)s/%(name)s] "
+                               "[%(threadName)s] %(message)s")
 
     # Register docker stats collector
     docker_collector_params = {
