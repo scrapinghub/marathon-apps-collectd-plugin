@@ -322,7 +322,7 @@ class DockerStatsCollector(object):
             # Get the details of the container (cached for speed)
             cid = container["Id"]
             details = self._details(cid)
-            self.logger.info("Processing container: %s", cid)
+            self.logger.debug("Processing container: %s", cid)
 
             # Get appid and taskid from environment configuration
             appid = taskid = None
