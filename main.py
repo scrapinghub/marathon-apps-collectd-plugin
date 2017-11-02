@@ -234,6 +234,7 @@ class LRUCacheStatsCollector(BaseStatsCollector):
 class DockerStatsCollector(object):
 
     def __init__(self, host, port, client_cert=None, client_key=None, ca_cert=None):
+        self.logger = logging.getLogger(__name__)
         self._client = None
         self._subcollectors = [
             NetworkStatsCollector(),
@@ -244,7 +245,6 @@ class DockerStatsCollector(object):
 
         # Establish the initial connection to the daemon
         self._connect(host, port, client_cert, client_key, ca_cert)
-        self.logger = logging.getLogger(__name__)
 
     def _connect(self, host, port, client_cert=None, client_key=None, ca_cert=None):
         """
