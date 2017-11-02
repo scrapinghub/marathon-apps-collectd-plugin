@@ -374,7 +374,7 @@ def main():
     docker_collector_params = {
         "host": os.environ.get("DOCKER_REMOTE_HOST", "127.0.0.1"),
         "port": os.environ.get("DOCKER_REMOTE_PORT", "2376"),
-        "client_cert": os.environ.get("DOCKER_SSL_CLIENT_CER,T"),
+        "client_cert": os.environ.get("DOCKER_SSL_CLIENT_CERT"),
         "client_key": os.environ.get("DOCKER_SSL_CLIENT_KEY",),
         "ca_cert": os.environ.get("DOCKER_SSL_CA_CERT"),
     }
