@@ -121,7 +121,7 @@ class NetworkStatsCollector(BaseStatsCollector):
                          "Cumulative count of packets dropped while transmitting", labels)
 
     def add_container(self, appid, taskid, stats):
-        nets = stats["networks"]
+        nets = stats.get("networks", [])
         for net in nets:
             for metric_name in self.METRIC_NAME_TO_DOCKER_STAT:
                 stat_id = self.METRIC_NAME_TO_DOCKER_STAT[metric_name]
