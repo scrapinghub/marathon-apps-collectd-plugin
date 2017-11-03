@@ -220,6 +220,8 @@ class LRUCacheStatsCollector(BaseStatsCollector):
         self._cached_method = cached_method
 
     def collect(self):
+        # Remove old data
+        self.cleanup_samples()
         # Get cache info
         info = self._cached_method.cache_info()
 
