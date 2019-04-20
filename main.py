@@ -329,9 +329,9 @@ class DockerStatsCollector(object):
             # Get appid and taskid from environment configuration
             appid = taskid = None
             for env_var in details.get("Config", {}).get("Env", []):
-                key, value = env_var.split("=")
+                key, value = env_var.split("=", 1)
                 if key == "MESOS_TASK_ID":
-                    appid, taskid = value.split(".")
+                    appid, taskid = value.split(".", 1)
                     # Use short taskid
                     taskid = taskid[:8]
 
