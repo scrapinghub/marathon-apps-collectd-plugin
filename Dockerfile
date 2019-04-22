@@ -9,11 +9,11 @@ USER nobody
 EXPOSE 9127
 
 # Install dependencies
-ADD requirements.txt /tasks_exporter
+ADD requirements.txt /tasks_exporter/requirements.txt
 RUN pip install -r /tasks_exporter/requirements.txt
 
 # Install main
-ADD main.py /tasks_exporter
+ADD main.py /tasks_exporter/main.py
 
 # Main script
 ENTRYPOINT  [ "/tasks_exporter/main.py" ]
