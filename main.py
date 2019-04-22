@@ -335,7 +335,7 @@ class DockerStatsCollector(threading.Thread):
         """
         Collect stats from docker daemon and return metrics.
         """
-        threads = []
+        to_remove = []
 
         # Erase previous samples
         self.cleanup_samples()
@@ -346,12 +346,17 @@ class DockerStatsCollector(threading.Thread):
             if collector.latest:
                 self.add_container(collector.appid, collector.taskid, collector.latest)
             else:
-                self.streams.pop(cid)
+                to_remove.append(cid)
 
         # Return all the metrics
         for metrics in self._subcollectors:
             for metric in metrics.collect():
                 yield metric
+
+        # Stop dead containers
+        for cid in to_remove:
+            self.streams.stop()
+            self.streams.pop(cid)
 
 
 def main():
