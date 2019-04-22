@@ -2,15 +2,15 @@ FROM python:3.7-alpine
 
 WORKDIR /
 
-# Default user
-USER nobody
-
 # Default port
 EXPOSE 9127
 
 # Install dependencies
 ADD requirements.txt /tasks_exporter/requirements.txt
 RUN pip install -r /tasks_exporter/requirements.txt
+
+# Default user
+USER nobody
 
 # Install main
 ADD main.py /tasks_exporter/main.py
