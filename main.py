@@ -355,7 +355,7 @@ class DockerStatsCollector(threading.Thread):
 
         # Stop dead containers
         for cid in to_remove:
-            self.streams.stop()
+            self.streams[cid].stop()
             self.streams.pop(cid)
 
 
