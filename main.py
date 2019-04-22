@@ -5,16 +5,13 @@
 """
 The script will publish metrics on port 9127 at `/metrics` path.
 
-Uses the same environment variables as the collectd script
+It connects to the local docker daemon using the unix socket:
 
-export DOCKER_REMOTE_HOST=127.0.0.1
-export DOCKER_REMOTE_PORT=2376
-export DOCKER_SSL_CLIENT_CERT=/client.cer
-export DOCKER_SSL_CLIENT_KEY=/client.key
-export DOCKER_SSL_CA_CERT=/ca.cer
-
-pip install docker prometheus_client flask
-
+    unix://var/run/docker.sock
+    
+It's possible to modify the connection details using the `DOCKER_HOST`,
+`DOCKER_TLS_VERIFY` and `DOCKER_CERT_PATH` environment variables as the
+official docker client.
 """
 
 import argparse
@@ -235,7 +232,7 @@ class LRUCacheStatsCollector(BaseStatsCollector):
 
 class DockerStatsCollector(object):
 
-    def __init__(self, host, port, client_cert=None, client_key=None, ca_cert=None):
+    def __init__(self):
         self.logger = logging.getLogger(__name__)
         self._client = None
         self._subcollectors = [
@@ -246,9 +243,9 @@ class DockerStatsCollector(object):
         self._lock = threading.Lock()
 
         # Establish the initial connection to the daemon
-        self._connect(host, port, client_cert, client_key, ca_cert)
+        self._connect()
 
-    def _connect(self, host, port, client_cert=None, client_key=None, ca_cert=None):
+    def _connect(self):
         """
         Connects to the docker daemon.
 
@@ -256,17 +253,8 @@ class DockerStatsCollector(object):
         `client_cert` and `client_key` are given, the connection is established using
         https.
         """
-        tls_config = None
-        proto = "http"
-        if client_cert and client_key:
-            proto = "https"
-            tls_config = docker.tls.TLSConfig(client_cert=(client_cert, client_key),
-                                              verify=ca_cert)
-
         # Create connection
-        docker_url = "{proto}://{host}:{port}/".format(proto=proto, host=host, port=port)
-        self._client = docker.DockerClient(base_url=docker_url, version="1.21",
-                                           timeout=5, tls=tls_config)
+        self._client = docker.from_env(timeout=5)
         # Check connection
         self.logger.debug("Connecting to docker daemon...")
         info = self._client.version()
@@ -373,11 +361,7 @@ def main():
                                "[%(threadName)s] %(message)s")
 
     # Register docker stats collector
-    collector = DockerStatsCollector(host=os.environ.get("DOCKER_REMOTE_HOST", "127.0.0.1"),
-                                     port=os.environ.get("DOCKER_REMOTE_PORT", "2376"),
-                                     client_cert=os.environ.get("DOCKER_SSL_CLIENT_CERT"),
-                                     client_key=os.environ.get("DOCKER_SSL_CLIENT_KEY"),
-                                     ca_cert=os.environ.get("DOCKER_SSL_CA_CERT"))
+    collector = DockerStatsCollector()
     prometheus.REGISTRY.register(collector)
 
     # Register cache stats collector
