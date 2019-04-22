@@ -1,17 +1,23 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-
 """
 The script will publish metrics on port 9127 at `/metrics` path.
-
 It connects to the local docker daemon using the unix socket:
-
     unix://var/run/docker.sock
-    
+
 It's possible to modify the connection details using the `DOCKER_HOST`,
 `DOCKER_TLS_VERIFY` and `DOCKER_CERT_PATH` environment variables as the
 official docker client.
+
+    * DOCKER_HOST: With the url to the docker daemon.
+    * DOCKER_TLS_VERIFY: Flag that defines whether TLS verification should be
+                         performed. Any non empty value is treated as `True`.
+    * DOCKER_CERT_PATH: Path to SSL certificates to use when TLS is activated.
+                        If set, the value should point to a folder where there
+                        is a client certificate `cert.pem`, a client private key
+                        `key.pem` and a CA certificate `ca.pem`.
+
 """
 
 import argparse
@@ -19,6 +25,7 @@ import logging
 import sys
 import os
 import threading
+import time
 from functools import lru_cache
 
 import docker
@@ -27,21 +34,6 @@ from flask import Flask
 
 import prometheus_client.core as prometheus
 from prometheus_client import generate_latest, PROCESS_COLLECTOR
-
-
-def async_call(function, *args, **kwargs):
-    """
-    Execute function in a thread
-    """
-    task = threading.Thread(
-        target=function,
-        name=function.__name__,
-        args=args,
-        kwargs=kwargs
-    )
-    task.daemon = False
-    task.start()
-    return task
 
 
 def ns_to_sec(value):
@@ -205,34 +197,65 @@ class CPUStatsCollector(BaseStatsCollector):
         self.get_stat("container_cpu_usage_percent").add_metric([appid, taskid], cpu_percent)
 
 
-class LRUCacheStatsCollector(BaseStatsCollector):
+class ContainerStatsStream(threading.Thread):
 
-    def __init__(self, cached_method):
+    def __init__(self, docker_client, container_id):
+        """
+        ContainerStatsStream connects to the docker stats api stream
+        and updates `self.latest` with the latest value of the stats.
+        """
         super().__init__()
-        self.add_counter("exporter_details_cache_hits_total", "Cumulative cache hits.")
-        self.add_counter("exporter_details_cache_misses_total", "Cumulative cache misses.")
-        self.add_gauge("exporter_details_cache_max_size", "Maximum size of the cache.")
-        self.add_gauge("exporter_details_cache_current_size", "Current cache utilization.")
+        self.logger = logging.getLogger(__name__)
+        self.client = docker_client
+        self.id = container_id
+        self.__stop__ = False
+        self.latest = None
+        self.appid = None
+        self.taskid = None
 
-        self._cached_method = cached_method
+    def stop(self):
+        """
+        Stops collecting stats
+        """
+        self.__stop__ = True
 
-    def collect(self):
-        # Remove old data
-        self.cleanup_samples()
-        # Get cache info
-        info = self._cached_method.cache_info()
+    def run(self):
+        """
+        Connects to the docker stats api stream to fetch the stats of the
+        container.
+        """
+        # Get appid and taskid from environment configuration
+        self.logger.debug("Processing container: %s", self.id)
+        details = self.client.api.inspect_container(self.id)
 
-        self.get_stat("exporter_details_cache_hits_total").add_metric([], info.hits)
-        self.get_stat("exporter_details_cache_misses_total").add_metric([], info.misses)
-        self.get_stat("exporter_details_cache_max_size").add_metric([], info.maxsize)
-        self.get_stat("exporter_details_cache_current_size").add_metric([], info.currsize)
+        self.appid = self.taskid = None
+        for env_var in details.get("Config", {}).get("Env", []):
+            key, value = env_var.split("=", 1)
+            if key == "MESOS_TASK_ID":
+                self.appid, self.taskid = value.split(".", 1)
+                # Use short taskid
+                self.taskid = self.taskid[:8]
 
-        return super().collect()
+        if self.appid and self.taskid:
+            stream = self.client.api.stats(self.id, decode=True, stream=True)
+            for stat in stream:
+                if self.__stop__:
+                    break
+                # Save stat
+                self.latest = stat
+        self.latest = None
 
 
-class DockerStatsCollector(object):
+class DockerStatsCollector(threading.Thread):
 
     def __init__(self):
+        """
+        DockerStatsCollector collects the stats from the running docker
+        containers, it updates the list of running and stopped containers
+        every second.
+        """
+        super().__init__(name='DockerStatsCollector')
+
         self.logger = logging.getLogger(__name__)
         self._client = None
         self._subcollectors = [
@@ -241,49 +264,56 @@ class DockerStatsCollector(object):
             CPUStatsCollector()
         ]
         self._lock = threading.Lock()
+        self.__stop__ = False
+        self.streams = dict()
 
-        # Establish the initial connection to the daemon
-        self._connect()
-
-    def _connect(self):
+    def stop(self):
         """
-        Connects to the docker daemon.
-
-        Returns a client connection to the docker daemon running on `host`:`port`. If
-        `client_cert` and `client_key` are given, the connection is established using
-        https.
+        Stops the stats collector
         """
-        # Create connection
+        self.__stop__ = True
+
+    def run(self):
+        """
+        Collect stats of running containers.
+        """
         self._client = docker.from_env(timeout=5)
         # Check connection
         self.logger.debug("Connecting to docker daemon...")
         info = self._client.version()
-        self.logger.debug("Connected to: %s", info)
+        self.logger.debug("Connected to: %s (%s)", self._client.api.base_url, info)
 
-    def _fetch_stats(self, appid, taskid, container_id):
-        """
-        Process stats for `container_id`
-        """
-        stats = self._client.api.stats(container_id, decode=True, stream=False)
+        if self.streams:
+            raise Exception("Can't start running when there are running streams")
 
-        # Add this container's stats to each of the sub-collectors
-        self.add_container(appid, taskid, stats)
+        while not self.__stop__:
+            # Collect containers and their stats
+            for container in self._client.api.containers(all=False):
+                # Ignore containers that we've already seen
+                cid = container["Id"]
+                if cid in self.streams:
+                    continue
+                # Add container to the list of watched streams
+                self.streams[cid] = ContainerStatsStream(self._client, cid)
+                self.streams[cid].start()
+            time.sleep(1)
 
-    @lru_cache(maxsize=32)
-    def _details(self, container_id):
-        """
-        Return the details for `container_id`
-        """
-        self.logger.debug("Getting container info for %s", container_id)
-        return self._client.api.inspect_container(container_id)
+        self.logger.debug("Finishing collecting containers")
 
-    def cache_info(self):
-        """
-        Returns the cache info.
-        """
-        return self._details.cache_info()
+        # Stop all streams
+        for cid in self.streams:
+            self.streams[cid].stop()
+
+        # Wait for streams to finish
+        for cid in self.streams:
+            self.streams[cid].join(5)
+
+        self.logger.debug("All threads finished")
 
     def add_container(self, appid, taskid, stats):
+        """
+        Add the container stats belonging to appid and taskid.
+        """
         self.logger.info("Adding container to stats collector: %s:%s", appid, taskid)
         with self._lock:
             for collector in self._subcollectors:
@@ -293,6 +323,9 @@ class DockerStatsCollector(object):
                     self.logger.exception("[%s] Error parsing stats: %s", str(collector), stats)
 
     def cleanup_samples(self):
+        """
+        Remove samples to start from scratch.
+        """
         self.logger.info("Cleaning up samples")
         with self._lock:
             for collector in self._subcollectors:
@@ -307,32 +340,13 @@ class DockerStatsCollector(object):
         # Erase previous samples
         self.cleanup_samples()
 
-        # Get the running containers at this moment
-        for container in self._client.api.containers(all=False):
-            # Get the details of the container (cached for speed)
-            cid = container["Id"]
-            details = self._details(cid)
-            self.logger.debug("Processing container: %s", cid)
-
-            # Get appid and taskid from environment configuration
-            appid = taskid = None
-            for env_var in details.get("Config", {}).get("Env", []):
-                key, value = env_var.split("=", 1)
-                if key == "MESOS_TASK_ID":
-                    appid, taskid = value.split(".", 1)
-                    # Use short taskid
-                    taskid = taskid[:8]
-
-            # If we don't have both values we can't continue
-            if appid and taskid:
-                threads.append(async_call(self._fetch_stats, appid, taskid, cid))
+        # Get the metrics from the streams
+        for cid in self.streams:
+            collector = self.streams[cid]
+            if collector.latest:
+                self.add_container(collector.appid, collector.taskid, collector.latest)
             else:
-                self.logger.info("Can't calculate 'appid' or 'taskid', ignoring container: %s", cid)
-
-        # Wait for all _fetch_stats to finish
-        for thread in threads:
-            thread.join(5)
-        self.logger.debug("All metrics collected")
+                self.streams.pop(cid)
 
         # Return all the metrics
         for metrics in self._subcollectors:
@@ -362,10 +376,8 @@ def main():
 
     # Register docker stats collector
     collector = DockerStatsCollector()
+    collector.start()
     prometheus.REGISTRY.register(collector)
-
-    # Register cache stats collector
-    prometheus.REGISTRY.register(LRUCacheStatsCollector(collector))
 
     # Remove process collector (added by default)
     prometheus.REGISTRY.unregister(PROCESS_COLLECTOR)
@@ -387,6 +399,11 @@ def main():
         return generate_latest()
 
     app.run(host=args.listen_host, port=args.listen_port)
+
+    # Wait for collector
+    collector.stop()
+    collector.join(5)
+
     return 0
 
 
