@@ -258,7 +258,7 @@ class DockerStatsCollector(object):
         # Check connection
         self.logger.debug("Connecting to docker daemon...")
         info = self._client.version()
-        self.logger.debug("Connected to: %s (%s)", docker_url, info)
+        self.logger.debug("Connected to: %s", info)
 
     def _fetch_stats(self, appid, taskid, container_id):
         """
