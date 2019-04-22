@@ -1,19 +1,19 @@
-FROM python:3.6-alpine
-
-WORKDIR /tasks_exporter
-
-ADD requirements.txt .
-
-RUN pip install -r ./requirements.txt
-
-ADD main.py .
-
-USER nobody
+FROM python:3.7-alpine
 
 WORKDIR /
 
-# Expose default port
+# Default user
+USER nobody
+
+# Default port
 EXPOSE 9127
+
+# Install dependencies
+ADD requirements.txt /tasks_exporter
+RUN pip install -r /tasks_exporter/requirements.txt
+
+# Install main
+ADD main.py /tasks_exporter
 
 # Main script
 ENTRYPOINT  [ "/tasks_exporter/main.py" ]
