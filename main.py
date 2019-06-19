@@ -23,10 +23,8 @@ official docker client.
 import argparse
 import logging
 import sys
-import os
 import threading
 import time
-from functools import lru_cache
 
 import docker
 
@@ -76,19 +74,6 @@ class BaseStatsCollector(object):
 
 class NetworkStatsCollector(BaseStatsCollector):
 
-    # Which metric names are associated with each
-    # of the fields in the stat json
-    METRIC_NAME_TO_DOCKER_STAT = {
-        "container_network_receive_bytes_total": "rx_bytes",
-        "container_network_receive_errors_total": "rx_errors",
-        "container_network_receive_packets_total": "rx_packets",
-        "container_network_receive_packets_dropped_total": "rx_dropped",
-        "container_network_transmit_bytes_total": "tx_bytes",
-        "container_network_transmit_errors_total": "tx_errors",
-        "container_network_transmit_packets_total": "tx_packets",
-        "container_network_transmit_packets_dropped_total": "tx_dropped",
-    }
-
     def __init__(self):
         super().__init__()
         labels = ["interface", "appid", "taskid"]
@@ -110,11 +95,26 @@ class NetworkStatsCollector(BaseStatsCollector):
                          "Cumulative count of packets dropped while transmitting", labels)
 
     def add_container(self, appid, taskid, stats):
-        nets = stats.get("networks", [])
+        nets = stats.get("networks", {})
         for net in nets:
-            for metric_name in self.METRIC_NAME_TO_DOCKER_STAT:
-                stat_id = self.METRIC_NAME_TO_DOCKER_STAT[metric_name]
-                self.get_stat(metric_name).add_metric([net, appid, taskid], nets[net][stat_id])
+            labels = [net, appid, taskid]
+
+            self.get_stat("container_network_receive_bytes_total").add_metric(
+                labels, nets[net]["rx_bytes"])
+            self.get_stat("container_network_receive_errors_total").add_metric(
+                labels, nets[net]["rx_errors"])
+            self.get_stat("container_network_receive_packets_total").add_metric(
+                labels, nets[net]["rx_packets"])
+            self.get_stat("container_network_receive_packets_dropped_total").add_metric(
+                labels, nets[net]["rx_dropped"])
+            self.get_stat("container_network_transmit_bytes_total").add_metric(
+                labels, nets[net]["tx_bytes"])
+            self.get_stat("container_network_transmit_errors_total").add_metric(
+                labels, nets[net]["tx_errors"])
+            self.get_stat("container_network_transmit_packets_total").add_metric(
+                labels, nets[net]["tx_packets"])
+            self.get_stat("container_network_transmit_packets_dropped_total").add_metric(
+                labels, nets[net]["tx_dropped"])
 
 
 class MemoryStatsCollector(BaseStatsCollector):
