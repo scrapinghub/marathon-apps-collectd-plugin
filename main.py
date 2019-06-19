@@ -119,14 +119,6 @@ class NetworkStatsCollector(BaseStatsCollector):
 
 class MemoryStatsCollector(BaseStatsCollector):
 
-    # Which metric names are associated with each
-    # of the fields in the stat json
-    METRIC_NAME_TO_DOCKER_STAT = {
-        "container_memory_cache": "cache",
-        "container_memory_rss": "rss",
-        "container_memory_swap": "swap",
-    }
-
     def __init__(self):
         super().__init__()
         labels = ["appid", "taskid"]
@@ -134,18 +126,28 @@ class MemoryStatsCollector(BaseStatsCollector):
         self.add_gauge("container_memory_rss", "Size of RSS in bytes.", labels)
         self.add_gauge("container_memory_swap", "Container swap usage in bytes.", labels)
         self.add_gauge("container_memory_usage_bytes", "Current memory usage in bytes.", labels)
+        self.add_gauge("container_memory_limit_bytes", "Current memory limit in bytes.", labels)
         self.add_gauge("container_memory_usage_percent", "Percentage of memory usage.", labels)
 
     def add_container(self, appid, taskid, stats):
+
+        if "memory_stats" not in stats or "stats" not in stats["memory_stats"]:
+            return
+
         mem = stats["memory_stats"]
-        for metric_name in self.METRIC_NAME_TO_DOCKER_STAT:
-            stat_id = self.METRIC_NAME_TO_DOCKER_STAT[metric_name]
-            self.get_stat(metric_name).add_metric([appid, taskid], mem["stats"][stat_id])
+        mem_stats = mem["stats"]
+
+        labels = [appid, taskid]
+
+        self.get_stat("container_memory_cache").add_metric(labels, mem_stats.get("cache", 0))
+        self.get_stat("container_memory_rss").add_metric(labels, mem_stats.get("rss", 0))
+        self.get_stat("container_memory_swap").add_metric(labels, mem_stats.get("swap", 0))
         # memory_usage needs special treatment
-        self.get_stat("container_memory_usage_bytes").add_metric([appid, taskid], mem["usage"])
+        self.get_stat("container_memory_usage_bytes").add_metric(labels, mem["usage"])
+        self.get_stat("container_memory_limit_bytes").add_metric(labels, mem["limit"])
 
         mem_percent = (mem["usage"] / mem["limit"]) * 100
-        self.get_stat("container_memory_usage_percent").add_metric([appid, taskid], mem_percent)
+        self.get_stat("container_memory_usage_percent").add_metric(labels, mem_percent)
 
 
 class CPUStatsCollector(BaseStatsCollector):
