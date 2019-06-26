@@ -100,21 +100,21 @@ class NetworkStatsCollector(BaseStatsCollector):
             labels = [net, appid, taskid]
 
             self.get_stat("container_network_receive_bytes_total").add_metric(
-                labels, nets[net]["rx_bytes"])
+                labels, nets[net].get("rx_bytes", 0))
             self.get_stat("container_network_receive_errors_total").add_metric(
-                labels, nets[net]["rx_errors"])
+                labels, nets[net].get("rx_errors", 0))
             self.get_stat("container_network_receive_packets_total").add_metric(
-                labels, nets[net]["rx_packets"])
+                labels, nets[net].get("rx_packets", 0))
             self.get_stat("container_network_receive_packets_dropped_total").add_metric(
-                labels, nets[net]["rx_dropped"])
+                labels, nets[net].get("rx_dropped", 0))
             self.get_stat("container_network_transmit_bytes_total").add_metric(
-                labels, nets[net]["tx_bytes"])
+                labels, nets[net].get("tx_bytes", 0))
             self.get_stat("container_network_transmit_errors_total").add_metric(
-                labels, nets[net]["tx_errors"])
+                labels, nets[net].get("tx_errors", 0))
             self.get_stat("container_network_transmit_packets_total").add_metric(
-                labels, nets[net]["tx_packets"])
+                labels, nets[net].get("tx_packets", 0))
             self.get_stat("container_network_transmit_packets_dropped_total").add_metric(
-                labels, nets[net]["tx_dropped"])
+                labels, nets[net].get("tx_dropped", 0))
 
 
 class MemoryStatsCollector(BaseStatsCollector):
@@ -131,23 +131,28 @@ class MemoryStatsCollector(BaseStatsCollector):
 
     def add_container(self, appid, taskid, stats):
 
-        if "memory_stats" not in stats or "stats" not in stats["memory_stats"]:
+        mem = stats.get("memory_stats", {})
+        if not mem:
             return
 
-        mem = stats["memory_stats"]
-        mem_stats = mem["stats"]
-
         labels = [appid, taskid]
+
+        self.get_stat("container_memory_usage_bytes").add_metric(labels, mem.get("usage", 0))
+
+        if mem.get("limit", 0) > 0:
+            self.get_stat("container_memory_limit_bytes").add_metric(labels, mem["limit"])
+            # Calculate percent when limit is available
+            mem_percent = (mem.get("usage", 0) / mem["limit"]) * 100
+            self.get_stat("container_memory_usage_percent").add_metric(labels, mem_percent)
+
+        mem_stats = mem.get("stats", {})
+        if not mem_stats:
+            return
 
         self.get_stat("container_memory_cache").add_metric(labels, mem_stats.get("cache", 0))
         self.get_stat("container_memory_rss").add_metric(labels, mem_stats.get("rss", 0))
         self.get_stat("container_memory_swap").add_metric(labels, mem_stats.get("swap", 0))
-        # memory_usage needs special treatment
-        self.get_stat("container_memory_usage_bytes").add_metric(labels, mem["usage"])
-        self.get_stat("container_memory_limit_bytes").add_metric(labels, mem["limit"])
 
-        mem_percent = (mem["usage"] / mem["limit"]) * 100
-        self.get_stat("container_memory_usage_percent").add_metric(labels, mem_percent)
 
 
 class CPUStatsCollector(BaseStatsCollector):
@@ -167,35 +172,44 @@ class CPUStatsCollector(BaseStatsCollector):
                        "Percentage of cpu time used.", labels)
 
     def add_container(self, appid, taskid, stats):
-        cpu_stats = stats["cpu_stats"]
-        pre_cpu_stats = stats["precpu_stats"]
-        cpu_usage = cpu_stats["cpu_usage"]
+        cpu_stats = stats.get("cpu_stats", {})
+        if not cpu_stats:
+            return
 
-        # system, kernel and user usage
+        cpu_usage = cpu_stats.get("cpu_usage", {})
+        if not cpu_usage:
+            return
+
         self.get_stat("container_cpu_system_seconds_total").add_metric(
             [appid, taskid],
-            ns_to_sec(cpu_stats["system_cpu_usage"]))
+            ns_to_sec(cpu_stats.get("system_cpu_usage", 0)))
         self.get_stat("container_cpu_kernel_seconds_total").add_metric(
             [appid, taskid],
-            ns_to_sec(cpu_usage["usage_in_kernelmode"]))
+            ns_to_sec(cpu_usage.get("usage_in_kernelmode", 0)))
         self.get_stat("container_cpu_user_seconds_total").add_metric(
             [appid, taskid],
-            ns_to_sec(cpu_usage["usage_in_usermode"]))
+            ns_to_sec(cpu_usage.get("usage_in_usermode", 0)))
 
         # Per cpu metrics
-        for cpu, value in enumerate(cpu_usage["percpu_usage"]):
+        for cpu, value in enumerate(cpu_usage.get("percpu_usage", [])):
             cpu_label = "cpu{:02d}".format(cpu)
             self.get_stat("container_cpu_usage_seconds_total").add_metric(
                 [cpu_label, appid, taskid],
                 ns_to_sec(value))
 
+        pre_cpu_stats = stats.get("precpu_stats", {})
+        if not pre_cpu_stats:
+            return
+
         # Calculate percent usage
         # https://github.com/moby/moby/blob/8a03eb0b6cc56879eada4a928c6314f33001fc83/integration-cli/docker_api_stats_test.go#L40
         cpu_percent = 0.0
-        cpu_delta = cpu_usage["total_usage"] - pre_cpu_stats["cpu_usage"]["total_usage"]
-        sys_delta = cpu_stats["system_cpu_usage"] - pre_cpu_stats["system_cpu_usage"]
+
+        cpu_delta = cpu_usage.get("total_usage", 0) - pre_cpu_stats.get("cpu_usage", {}).get("total_usage", 0)
+        sys_delta = cpu_stats.get("system_cpu_usage", 0) - pre_cpu_stats.get("system_cpu_usage", 0)
         if sys_delta > 0 and cpu_delta > 0:
-            cpu_percent = (cpu_delta / sys_delta) * len(cpu_usage["percpu_usage"]) * 100.0
+            cpu_percent = (cpu_delta / sys_delta) * len(cpu_usage.get("percpu_usage", [])) * 100.0
+
         self.get_stat("container_cpu_usage_percent").add_metric([appid, taskid], cpu_percent)
 
 
