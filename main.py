@@ -253,12 +253,16 @@ class ContainerStatsStream(threading.Thread):
                 self.taskid = self.taskid[:8]
 
         if self.appid and self.taskid:
-            stream = self.client.api.stats(self.id, decode=True, stream=True)
-            for stat in stream:
-                if self.__stop__:
-                    break
-                # Save stat
-                self.latest = stat
+            try:
+                stream = self.client.api.stats(self.id, decode=True, stream=True)
+                for stat in stream:
+                    if self.__stop__:
+                        break
+                    # Save stat
+                    self.latest = stat
+            except Exception:
+                self.logger.warning("Unable to retrieve container stats from "
+                                    "docker, appid: %s, container: %s", self.appid, self.id)
         self.latest = None
 
 
@@ -304,14 +308,17 @@ class DockerStatsCollector(threading.Thread):
 
         while not self.__stop__:
             # Collect containers and their stats
-            for container in self._client.api.containers(all=False):
-                # Ignore containers that we've already seen
-                cid = container["Id"]
-                if cid in self.streams:
-                    continue
-                # Add container to the list of watched streams
-                self.streams[cid] = ContainerStatsStream(self._client, cid)
-                self.streams[cid].start()
+            try:
+                for container in self._client.api.containers(all=False):
+                    # Ignore containers that we've already seen
+                    cid = container["Id"]
+                    if cid in self.streams:
+                        continue
+                    # Add container to the list of watched streams
+                    self.streams[cid] = ContainerStatsStream(self._client, cid)
+                    self.streams[cid].start()
+            except Exception:
+                self.logger.warning("Can't retrieve list of containers")
             time.sleep(1)
 
         self.logger.debug("Finishing collecting containers")
