@@ -364,12 +364,15 @@ class DockerStatsCollector(threading.Thread):
         self.cleanup_samples()
 
         # Get the metrics from the streams
-        for cid in self.streams:
-            collector = self.streams[cid]
-            if collector.latest:
-                self.add_container(collector.appid, collector.taskid, collector.latest)
-            else:
-                to_remove.append(cid)
+        try:
+            for cid in self.streams:
+                collector = self.streams[cid]
+                if collector.latest:
+                    self.add_container(collector.appid, collector.taskid, collector.latest)
+                else:
+                    to_remove.append(cid)
+        except:
+            logging.warning("New container was found during iteration over streams")
 
         # Return all the metrics
         for metrics in self._subcollectors:
