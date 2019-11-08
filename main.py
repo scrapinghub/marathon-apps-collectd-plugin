@@ -240,18 +240,14 @@ class ContainerStatsStream(threading.Thread):
         Connects to the docker stats api stream to fetch the stats of the
         container.
         """
+        self.appid = self.taskid = None
+
         # Get appid and taskid from environment configuration
         self.logger.debug("Processing container: %s", self.id)
         details = self.client.api.inspect_container(self.id)
 
-        self.appid = self.taskid = None
-        for env_var in details.get("Config", {}).get("Env", []):
-            key, value = env_var.split("=", 1)
-            if key == "MESOS_TASK_ID":
-                self.appid, self.taskid = value.split(".", 1)
-                # Use short taskid
-                self.taskid = self.taskid[:8]
-
+        self.taskid = details.get("Id")
+        self.appid = details.get("Name", "").strip("/")
         if self.appid and self.taskid:
             try:
                 stream = self.client.api.stats(self.id, decode=True, stream=True)
