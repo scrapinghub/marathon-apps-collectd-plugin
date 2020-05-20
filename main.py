@@ -94,7 +94,7 @@ class NetworkStatsCollector(BaseStatsCollector):
         self.add_counter("container_network_transmit_packets_dropped_total",
                          "Cumulative count of packets dropped while transmitting", labels)
 
-    def add_container(self, appid, taskid, stats):
+    def add_container(self, appid, taskid, stats, details):
         nets = stats.get("networks", {})
         for net in nets:
             labels = [net, appid, taskid]
@@ -129,7 +129,7 @@ class MemoryStatsCollector(BaseStatsCollector):
         self.add_gauge("container_memory_limit_bytes", "Current memory limit in bytes.", labels)
         self.add_gauge("container_memory_usage_percent", "Percentage of memory usage.", labels)
 
-    def add_container(self, appid, taskid, stats):
+    def add_container(self, appid, taskid, stats, details):
 
         mem = stats.get("memory_stats", {})
         if not mem:
@@ -170,8 +170,11 @@ class CPUStatsCollector(BaseStatsCollector):
                          "Cumulative cpu time consumed per cpu in seconds.", ["cpu"] + labels)
         self.add_gauge("container_cpu_usage_percent",
                        "Percentage of cpu time used.", labels)
+        self.add_gauge("container_spec_cpu_shares",
+                       "Assigned CPU shares.", labels)
 
-    def add_container(self, appid, taskid, stats):
+    def add_container(self, appid, taskid, stats, details):
+        details = details or {}
         cpu_stats = stats.get("cpu_stats", {})
         if not cpu_stats:
             return
@@ -189,6 +192,9 @@ class CPUStatsCollector(BaseStatsCollector):
         self.get_stat("container_cpu_user_seconds_total").add_metric(
             [appid, taskid],
             ns_to_sec(cpu_usage.get("usage_in_usermode", 0)))
+        self.get_stat("container_config_cpu_shares").add_metric(
+            [appid, taskid],
+            details.get("HostConfig", {}).get("CpuShares", 0))
 
         # Per cpu metrics
         for cpu, value in enumerate(cpu_usage.get("percpu_usage", [])):
@@ -228,6 +234,7 @@ class ContainerStatsStream(threading.Thread):
         self.latest = None
         self.appid = None
         self.taskid = None
+        self.details = None
 
     def stop(self):
         """
@@ -242,7 +249,7 @@ class ContainerStatsStream(threading.Thread):
         """
         # Get appid and taskid from environment configuration
         self.logger.debug("Processing container: %s", self.id)
-        details = self.client.api.inspect_container(self.id)
+        self.details = self.client.api.inspect_container(self.id)
 
         self.appid = self.taskid = None
         for env_var in details.get("Config", {}).get("Env", []):
@@ -333,7 +340,7 @@ class DockerStatsCollector(threading.Thread):
 
         self.logger.debug("All threads finished")
 
-    def add_container(self, appid, taskid, stats):
+    def add_container(self, appid, taskid, stats, details):
         """
         Add the container stats belonging to appid and taskid.
         """
@@ -341,7 +348,7 @@ class DockerStatsCollector(threading.Thread):
         with self._lock:
             for collector in self._subcollectors:
                 try:
-                    collector.add_container(appid, taskid, stats)
+                    collector.add_container(appid, taskid, stats, details)
                 except Exception:
                     self.logger.exception("[%s] Error parsing stats: %s", str(collector), stats)
 
@@ -368,7 +375,7 @@ class DockerStatsCollector(threading.Thread):
             for cid in self.streams:
                 collector = self.streams[cid]
                 if collector.latest:
-                    self.add_container(collector.appid, collector.taskid, collector.latest)
+                    self.add_container(collector.appid, collector.taskid, collector.latest, collector.details)
                 else:
                     to_remove.append(cid)
         except:
