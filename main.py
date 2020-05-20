@@ -252,7 +252,7 @@ class ContainerStatsStream(threading.Thread):
         self.details = self.client.api.inspect_container(self.id)
 
         self.appid = self.taskid = None
-        for env_var in details.get("Config", {}).get("Env", []):
+        for env_var in self.details.get("Config", {}).get("Env", []):
             key, value = env_var.split("=", 1)
             if key == "MESOS_TASK_ID":
                 self.appid, self.taskid = value.split(".", 1)
