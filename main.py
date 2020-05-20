@@ -192,7 +192,7 @@ class CPUStatsCollector(BaseStatsCollector):
         self.get_stat("container_cpu_user_seconds_total").add_metric(
             [appid, taskid],
             ns_to_sec(cpu_usage.get("usage_in_usermode", 0)))
-        self.get_stat("container_config_cpu_shares").add_metric(
+        self.get_stat("container_spec_cpu_shares").add_metric(
             [appid, taskid],
             details.get("HostConfig", {}).get("CpuShares", 0))
 
