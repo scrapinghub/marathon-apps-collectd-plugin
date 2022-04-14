@@ -128,6 +128,7 @@ class MemoryStatsCollector(BaseStatsCollector):
         self.add_gauge("container_memory_usage_bytes", "Current memory usage in bytes.", labels)
         self.add_gauge("container_memory_limit_bytes", "Current memory limit in bytes.", labels)
         self.add_gauge("container_memory_usage_percent", "Percentage of memory usage.", labels)
+        self.add_gauge("container_memory_usage_percent_total", "Percentage of memory usage total.", labels)
 
     def add_container(self, appid, taskid, stats, details):
 
@@ -139,13 +140,22 @@ class MemoryStatsCollector(BaseStatsCollector):
 
         self.get_stat("container_memory_usage_bytes").add_metric(labels, mem.get("usage", 0))
 
+        mem_stats = mem.get("stats", {})
+
         if mem.get("limit", 0) > 0:
             self.get_stat("container_memory_limit_bytes").add_metric(labels, mem["limit"])
             # Calculate percent when limit is available
-            mem_percent = (mem.get("usage", 0) / mem["limit"]) * 100
-            self.get_stat("container_memory_usage_percent").add_metric(labels, mem_percent)
+            mem_percent_total = (mem.get("usage", 0) / mem["limit"]) * 100
 
-        mem_stats = mem.get("stats", {})
+            if mem_stats:
+                stats_cache = mem_stats.get("cache", 0)
+                mem_percent = ((mem.get("usage", 0) - stats_cache) / mem["limit"]) * 100
+            else:
+                mem_percent = mem_percent_total
+
+            self.get_stat("container_memory_usage_percent").add_metric(labels, mem_percent)
+            self.get_stat("container_memory_usage_percent_total").add_metric(labels, mem_percent_total)
+
         if not mem_stats:
             return
 
