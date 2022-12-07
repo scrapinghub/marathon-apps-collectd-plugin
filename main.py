@@ -28,6 +28,7 @@ import time
 
 import docker
 
+from datetime import datetime
 from flask import Flask
 
 import prometheus_client.core as prometheus
@@ -39,6 +40,19 @@ def ns_to_sec(value):
     Converts a value in nanoseconds to seconds.
     """
     return value / 1000000000.0
+
+
+def iso_datetime_to_datetime(value):
+    """
+    Converts ISO date time to unix timestamp
+    """
+
+    if '.' in value:
+        dt, _ = value.split('.')
+    else:
+        dt = value.replace('Z', '')
+
+    return datetime.fromisoformat(dt)
 
 
 class BaseStatsCollector(object):
@@ -163,6 +177,32 @@ class MemoryStatsCollector(BaseStatsCollector):
         self.get_stat("container_memory_rss").add_metric(labels, mem_stats.get("rss", 0))
         self.get_stat("container_memory_swap").add_metric(labels, mem_stats.get("swap", 0))
 
+
+class StateStatsCollector(BaseStatsCollector):
+
+    def __init__(self):
+        super().__init__()
+        labels = ["appid", "taskid"]
+        self.add_counter("container_state_uptime", "Container uptime", labels)
+
+    def add_container(self, appid, taskid, stats, details):
+
+        state = details.get("State", {})
+        if not state:
+            return
+
+        labels = [appid, taskid]
+
+        if state.get("StartedAt", 0) != 0 and state.get("Running", None) is True:
+            started_at = iso_datetime_to_datetime(state.get("StartedAt"))
+            if datetime.now() > started_at:
+                uptime = (datetime.now() - started_at).total_seconds()
+            else:
+                uptime = 0
+        else:
+            uptime = 0
+
+        self.get_stat("container_state_uptime").add_metric(labels, uptime)
 
 
 class CPUStatsCollector(BaseStatsCollector):
@@ -298,7 +338,8 @@ class DockerStatsCollector(threading.Thread):
         self._subcollectors = [
             NetworkStatsCollector(),
             MemoryStatsCollector(),
-            CPUStatsCollector()
+            CPUStatsCollector(),
+            StateStatsCollector(),
         ]
         self._lock = threading.Lock()
         self.__stop__ = False
