@@ -223,6 +223,8 @@ class CPUStatsCollector(BaseStatsCollector):
         self.add_gauge("container_spec_cpu_shares",
                        "Assigned CPU shares.", labels)
 
+    # CPU usage maybe more than 100% see: https://github.com/docker/cli/issues/2134
+
     def add_container(self, appid, taskid, stats, details):
         details = details or {}
         cpu_stats = stats.get("cpu_stats", {})
@@ -259,12 +261,15 @@ class CPUStatsCollector(BaseStatsCollector):
 
         # Calculate percent usage
         # https://github.com/moby/moby/blob/8a03eb0b6cc56879eada4a928c6314f33001fc83/integration-cli/docker_api_stats_test.go#L40
+        # https://github.com/docker/cli/blob/6c12a82f330675d4e2cfff4f8b89a353bcb1fecd/cli/command/container/stats_helpers.go#L180
         cpu_percent = 0.0
 
         cpu_delta = cpu_usage.get("total_usage", 0) - pre_cpu_stats.get("cpu_usage", {}).get("total_usage", 0)
         sys_delta = cpu_stats.get("system_cpu_usage", 0) - pre_cpu_stats.get("system_cpu_usage", 0)
+        online_cpus = len(cpu_usage.get("percpu_usage", []))
+
         if sys_delta > 0 and cpu_delta > 0:
-            cpu_percent = (cpu_delta / sys_delta) * len(cpu_usage.get("percpu_usage", [])) * 100.0
+            cpu_percent = (cpu_delta / sys_delta) * online_cpus * 100.0
 
         self.get_stat("container_cpu_usage_percent").add_metric([appid, taskid], cpu_percent)
 
