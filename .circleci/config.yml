@@ -1,0 +1,21 @@
+version: 2.1
+
+orbs:
+  docker: circleci/docker@3.0.1
+
+workflows:
+  main:
+    jobs:
+      - docker/publish:
+          name: Build Image and Push to Registry
+          executor: docker/docker
+          use_remote_docker: true
+          remote_docker_dlc: true
+          docker_username: DOCKER_USER
+          docker_password: DOCKER_PASS
+          registry: ${DOCKER_REGISTRY}
+          deploy: true
+          image: ${CIRCLE_PROJECT_REPONAME}/${CIRCLE_BRANCH}
+          tag: ${CIRCLE_SHA1:0:7}
+          context:
+            - Docker

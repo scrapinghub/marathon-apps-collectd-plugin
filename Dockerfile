@@ -1,9 +1,9 @@
-FROM alpine:3.3
+FROM alpine:3
 
 RUN apk --update add collectd collectd-python py-pip
 
 ADD requirements.txt /
-RUN pip install -r /requirements.txt
+RUN pip install --break-system-packages -r /requirements.txt
 
 # Add default collectd template
 ADD collectd.conf.tpl /etc/collectd/collectd.conf.tpl
