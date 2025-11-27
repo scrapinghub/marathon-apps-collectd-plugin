@@ -1,3 +1,4 @@
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/scrapinghub/marathon-apps-collectd-plugin/tree/master.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/scrapinghub/marathon-apps-collectd-plugin/tree/master)
 # marathon-collectd-plugin
 
 A [Marathon](https://github.com/mesosphere/marathon) plugin for [collectd](http://collectd.org)
